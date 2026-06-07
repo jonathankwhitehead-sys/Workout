@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Functional Strength</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body { background:#0A0A0C; color:#F0EDE8; font-family:Georgia,'Times New Roman',serif; min-height:100vh; overscroll-behavior:none; }
+button,input,textarea { font-family:inherit; }
+::-webkit-scrollbar { display:none; }
+.mono { font-family:'Courier New',monospace; }
+
+/* Slide transitions */
+.slide-enter { animation: slideIn 0.28s cubic-bezier(.4,0,.2,1) forwards; }
+.slide-exit  { animation: slideOut 0.2s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes slideIn  { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } }
+@keyframes slideOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(-32px); } }
+
+/* Pulse for active mic */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+
+/* Timer bar */
+@keyframes timerShrink { from{width:100%} to{width:0%} }
+
+/* Overlay fade */
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes fadeInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef,useCallback,useMemo} = React;
+
+// ── STORAGE ───────────────────────────────────────────────────────────────────
+const db = {
+  get:(k)=>{ try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null} },
+  set:(k,v)=>{ try{localStorage.setItem(k,JSON.stringify(v));return true}catch{return false} },
+};
+
+// ── VIDEO MAP ─────────────────────────────────────────────────────────────────
+const VM = {
+  "Barbell Bench Press":              {id:"hWbUlkb5Ms4",coach:"Jeff Nippard"},
+  "Incline DB Press":                 {id:"8iPBEpDSP9I",coach:"Jeff Nippard"},
+  "DB Arnold Press (seated)":         {id:"_RlRDWO2jfg",coach:"Jeff Nippard"},
+  "Seated DB Shoulder Press":         {id:"_RlRDWO2jfg",coach:"Jeff Nippard"},
+  "DB Lateral Raise":                 {id:"SGyUoY0IZ7A",coach:"Jeff Nippard"},
+  "Tricep Dips (bodyweight)":         {id:"2z8JmcrW-As",coach:"ScottHerman"},
+  "Tricep Dips (weighted)":           {id:"2z8JmcrW-As",coach:"ScottHerman"},
+  "Explosive Push-up":                {id:"k2YnU7UFAaE",coach:"FitnessFAQs"},
+  "Landmine Press (half-kneeling)":   {id:"PXm-8fRnIow",coach:"Jeremy Ethier"},
+  "Half-Kneeling DB Chop":            {id:"WjU5OfJ5oJg",coach:"ATHLEAN-X"},
+  "DB Hammer Curl":                   {id:"TwD-YGVP4Bk",coach:"ScottHerman"},
+  "Plank to Down-Dog":                {id:"NK_EfGIJRuA",coach:"Jeremy Ethier"},
+  "Barbell Deadlift":                 {id:"ZaTM37cfiDs",coach:"Jeff Nippard"},
+  "Barbell Deadlift (explosive)":     {id:"ZaTM37cfiDs",coach:"Jeff Nippard"},
+  "Barbell Deadlift (heavy)":         {id:"ZaTM37cfiDs",coach:"Jeff Nippard"},
+  "Barbell Deadlift (moderate)":      {id:"ZaTM37cfiDs",coach:"Jeff Nippard"},
+  "Barbell Deadlift (speed)":         {id:"ZaTM37cfiDs",coach:"Jeff Nippard"},
+  "Pull-ups":                         {id:"GSYYXRjtkUQ",coach:"Jeremy Ethier"},
+  "Chin-ups (weighted or BW)":        {id:"GSYYXRjtkUQ",coach:"Jeremy Ethier"},
+  "Chin-ups (weighted)":              {id:"GSYYXRjtkUQ",coach:"Jeremy Ethier"},
+  "Chin-ups (bodyweight)":            {id:"GSYYXRjtkUQ",coach:"Jeremy Ethier"},
+  "Chin-ups (explosive)":             {id:"GSYYXRjtkUQ",coach:"Jeremy Ethier"},
+  "Single-Arm DB Row (braced)":       {id:"pYcpY20QaE8",coach:"ScottHerman"},
+  "Chest-Supported DB Row":           {id:"tLnlWj7LQ34",coach:"Buff Dudes"},
+  "Single-Leg RDL (DB)":             {id:"VL5Ab0T07e4",coach:"Jeff Nippard"},
+  "DB Rear Delt Row (seated)":        {id:"tLnlWj7LQ34",coach:"Buff Dudes"},
+  "Farmers Carry (DB)":               {id:"lLAw6fUccKA",coach:"Runna"},
+  "Suitcase Carry (DB)":              {id:"ur4ou6mX7sw",coach:"Tutorial"},
+  "Chin Tuck (cervical retraction)":  {id:"wQylqaCl8p4",coach:"Bob & Brad"},
+  "DB Bulgarian Split Squat":         {id:"HBYGeyb4sSM",coach:"Jeremy Ethier"},
+  "Barbell Hip Thrust":               {id:"SEdqd9Jl87I",coach:"Bret Contreras"},
+  "Barbell Hip Thrust (explosive)":   {id:"SEdqd9Jl87I",coach:"Bret Contreras"},
+  "Goblet Squat (heavy DB)":          {id:"MeIiIdhvXT4",coach:"Alan Thrall"},
+  "Goblet Squat (heavy)":             {id:"MeIiIdhvXT4",coach:"Alan Thrall"},
+  "Goblet Squat (explosive)":         {id:"MeIiIdhvXT4",coach:"Alan Thrall"},
+  "Goblet Squat":                     {id:"MeIiIdhvXT4",coach:"Alan Thrall"},
+  "DB Step-Up":                       {id:"dQqApCGd5Ss",coach:"Jeremy Ethier"},
+  "DB Step-Up (explosive)":           {id:"dQqApCGd5Ss",coach:"Jeremy Ethier"},
+  "Nordic Hamstring Curl":            {id:"_e9vFU9-tkc",coach:"E3 Rehab"},
+  "Standing Calf Raise (DB)":         {id:"gwLzBJYoWlQ",coach:"ATHLEAN-X"},
+  "Standing Calf Raise":              {id:"gwLzBJYoWlQ",coach:"ATHLEAN-X"},
+  "Dead Bug":                         {id:"4XLEnwUr1d8",coach:"Jeff Cavaliere"},
+  "Side Plank":                       {id:"YlMBsHcBLSc",coach:"NASM"},
+  "DB Hang Power Clean":              {id:"5rFPi9E1PoA",coach:"Zack Telander"},
+  "Broad Jump":                       {id:"4KL1wbBBBpM",coach:"Overtime Athletes"},
+  "Single-Arm DB Snatch":             {id:"oHKlBBQS8G8",coach:"Alan Thrall"},
+  "DB Thruster":                      {id:"L8fvwPVA9PY",coach:"CrossFit"},
+  "Sprint Intervals (outdoor or treadmill)":{id:"wCVSv7UxB2E",coach:"James Dunne"},
+  "Run or Brisk Walk":                {id:"wCVSv7UxB2E",coach:"James Dunne"},
+  "Brisk Walk (deload)":              {id:"wCVSv7UxB2E",coach:"James Dunne"},
+  "Easy Walk (outdoors)":             {id:"wCVSv7UxB2E",coach:"James Dunne"},
+  "Easy Walk (cooldown)":             {id:"wCVSv7UxB2E",coach:"James Dunne"},
+  "Self-Massage (thoracic, glutes, hamstrings)":{id:"3ygnFMfgVUw",coach:"Jeff Nippard"},
+  "Self-Massage (full body focus)":   {id:"3ygnFMfgVUw",coach:"Jeff Nippard"},
+  "Self-Massage (full body)":         {id:"3ygnFMfgVUw",coach:"Jeff Nippard"},
+  "90/90 Hip Rotations":              {id:"UJqBMOFDOew",coach:"Squat University"},
+  "Thoracic Rotations":               {id:"UJqBMOFDOew",coach:"Squat University"},
+  "Supine Knee-to-Chest":             {id:"eTCBSFlCJ_s",coach:"NASM"},
+  "Dead Hang from Pull-up Bar":       {id:"lFNtAqa7oFA",coach:"FitnessFAQs"},
+  "World's Greatest Stretch":         {id:"HULjh9yIJhA",coach:"GOWOD"},
+};
+const vidUrl = n => VM[n]?.id ? `https://www.youtube.com/watch?v=${VM[n].id}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(n+" proper form")}`;
+
+// ── WEEK TYPES ────────────────────────────────────────────────────────────────
+const WEEKS = [
+  {label:"WK 1",full:"Strength",    desc:"Heavy — 3–5 reps, 2:30 rest",      color:"#E8533F",setBetween:150,exBetween:90},
+  {label:"WK 2",full:"Hypertrophy", desc:"Moderate — 8–12 reps, 1:15 rest",   color:"#3EAD6B",setBetween:75, exBetween:60},
+  {label:"WK 3",full:"Power",       desc:"Explosive — 3–5 reps, 3:30 rest",   color:"#E8A83F",setBetween:210,exBetween:90},
+  {label:"WK 4",full:"Deload",      desc:"Recovery — fewer sets, 2:00 rest",  color:"#9B8AC4",setBetween:120,exBetween:75},
+];
+
+const fmtTime = s => { const m=Math.floor(s/60),r=s%60; return m>0?`${m}:${r.toString().padStart(2,"0")}`:`${s}s`; };
+const fmtSpeak = s => { const m=Math.floor(s/60),r=s%60; if(m&&r) return `${m} minute${m>1?"s":""} ${r} seconds`; if(m) return `${m} minute${m>1?"s":""}`; return `${s} seconds`; };
+
+const BW_EX = new Set(["Pull-ups","Chin-ups (weighted or BW)","Chin-ups (bodyweight)","Chin-ups (explosive)","Tricep Dips (bodyweight)","Explosive Push-up","Plank to Down-Dog","Dead Bug","Side Plank","Broad Jump","Sprint Intervals (outdoor or treadmill)","Run or Brisk Walk","Brisk Walk (deload)","Easy Walk (outdoors)","Easy Walk (cooldown)","Self-Massage (thoracic, glutes, hamstrings)","Self-Massage (full body focus)","Self-Massage (full body)","90/90 Hip Rotations","Thoracic Rotations","Supine Knee-to-Chest","Dead Hang from Pull-up Bar","World's Greatest Stretch","Chin Tuck (cervical retraction)","Half-Kneeling DB Chop"]);
+const WBW_EX = new Set(["Chin-ups (weighted)","Tricep Dips (weighted)"]);
+
+// ── VOICE ─────────────────────────────────────────────────────────────────────
+function useVoice() {
+  const [micActive,setMicActive] = useState(false);
+  const [ttsOk] = useState(!!window.speechSynthesis);
+  const [micOk] = useState(!!(window.SpeechRecognition||window.webkitSpeechRecognition));
+  const recRef = useRef(null);
+
+  // iOS Safari pauses speechSynthesis after ~15s in background — keepalive ping every 10s
+  useEffect(()=>{
+    if(!window.speechSynthesis) return;
+    const id = setInterval(()=>{
+      if(window.speechSynthesis.speaking) window.speechSynthesis.pause(), window.speechSynthesis.resume();
+    }, 10000);
+    return ()=>clearInterval(id);
+  },[]);
+
+  const speak = useCallback((text,onEnd)=>{
+    if(!window.speechSynthesis){onEnd&&onEnd();return;}
+    window.speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.rate=0.92;u.pitch=1;u.volume=1;
+    // Wait for voices to load (needed on iOS first load)
+    const setVoice = ()=>{
+      const vs=window.speechSynthesis.getVoices();
+      const pref=vs.find(v=>v.lang==='en-US'&&v.localService)||vs.find(v=>v.lang.startsWith('en'));
+      if(pref) u.voice=pref;
+    };
+    if(window.speechSynthesis.getVoices().length) setVoice();
+    else window.speechSynthesis.onvoiceschanged = setVoice;
+    if(onEnd) u.onend=onEnd;
+    window.speechSynthesis.speak(u);
+  },[]);
+
+  const stopSpeaking = useCallback(()=>{ window.speechSynthesis&&window.speechSynthesis.cancel(); },[]);
+
+  const listen = useCallback((onResult,onFail)=>{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){onFail&&onFail();return;}
+    if(recRef.current){try{recRef.current.abort();}catch(e){}}
+    const r=new SR();
+    recRef.current=r;
+    r.continuous=false;r.interimResults=false;r.lang='en-US';r.maxAlternatives=3;
+    r.onresult=e=>{setMicActive(false);onResult(e.results[0][0].transcript.trim().toLowerCase());};
+    r.onnomatch=()=>{setMicActive(false);onFail&&onFail();};
+    r.onerror=()=>{setMicActive(false);onFail&&onFail();};
+    r.onend=()=>setMicActive(false);
+    setMicActive(true);
+    try{r.start();}catch(e){setMicActive(false);onFail&&onFail();}
+  },[]);
+
+  const stopListening = useCallback(()=>{
+    if(recRef.current){try{recRef.current.abort();}catch(e){}}
+    setMicActive(false);
+  },[]);
+
+  return {speak,stopSpeaking,listen,stopListening,micActive,ttsOk,micOk};
+}
+
+// ── DAYS DATA ─────────────────────────────────────────────────────────────────
+const DAYS = [
+  {label:"MON",title:"Push + Core",theme:"#E8533F",focus:"Horizontal Push / Spine-Safe Core",
+   warmup:"McGill Big 3: Cat-cow (10) → Bird Dog (5/side) → Modified Curl-up (8) — then wall slides, push-up negatives",
+   cooldown:"Hip flexor stretch, child's pose, chest opener — 8 min. End with 60s dead hang.",
+   exercises:{
+    w1:[
+      {name:"Barbell Bench Press",sets:4,reps:"5",tempo:"3-1-1-0",note:"Valsalva: inhale, brace, press, exhale at top"},
+      {name:"Incline DB Press",sets:3,reps:"8",tempo:"3-0-1-0",note:"Incline bench. Full stretch at bottom"},
+      {name:"DB Arnold Press (seated)",sets:3,reps:"8",tempo:"2-1-1-0",note:"Seated flat bench. Heavy and controlled"},
+      {name:"Single-Arm DB Row (braced)",sets:3,reps:"6/side",tempo:"2-1-1-0",note:"Knee on bench. Spine neutral"},
+      {name:"Tricep Dips (weighted)",sets:3,reps:"6–8",tempo:"2-1-1-0",note:"Dip bars. DB between feet"},
+      {name:"Dead Bug",sets:3,reps:"8/side",tempo:"3-1-1-0",note:"Floor mat. Press lower back down"},
+      {name:"Side Plank",sets:3,reps:"40s/side",tempo:"—",note:"Stack feet. Squeeze everything"},
+    ],
+    w2:[
+      {name:"Barbell Bench Press",sets:4,reps:"10–12",tempo:"3-0-1-0",note:"Moderate. Feel the pec stretch each rep"},
+      {name:"Incline DB Press",sets:4,reps:"12",tempo:"3-0-1-0",note:"Pump — keep tension throughout"},
+      {name:"DB Arnold Press (seated)",sets:3,reps:"12",tempo:"2-1-1-0",note:"Full rotation each rep"},
+      {name:"Single-Arm DB Row (braced)",sets:3,reps:"12/side",tempo:"2-1-2-0",note:"Slow squeeze at top"},
+      {name:"Tricep Dips (bodyweight)",sets:3,reps:"12–15",tempo:"2-1-1-0",note:"Higher reps for hypertrophy"},
+      {name:"Dead Bug",sets:3,reps:"12/side",tempo:"3-1-1-0",note:"More reps, same control"},
+      {name:"Side Plank",sets:3,reps:"30s/side",tempo:"—",note:"Add hip dip for extra work"},
+    ],
+    w3:[
+      {name:"Barbell Bench Press",sets:5,reps:"4",tempo:"3-1-X-0",note:"Lighter — drive explosively"},
+      {name:"Incline DB Press",sets:3,reps:"6",tempo:"3-0-X-0",note:"Controlled descent, explosive press"},
+      {name:"DB Arnold Press (seated)",sets:3,reps:"6",tempo:"2-1-X-0",note:"Fast concentric, full rotation"},
+      {name:"Single-Arm DB Row (braced)",sets:4,reps:"5/side",tempo:"2-0-X-0",note:"Pull with intent — fast row"},
+      {name:"Explosive Push-up",sets:3,reps:"8",tempo:"2-1-X-0",note:"Drive hands off floor at top"},
+      {name:"Dead Bug",sets:3,reps:"8/side",tempo:"3-1-1-0",note:"Core stabilization non-negotiable"},
+      {name:"Side Plank",sets:3,reps:"30s/side",tempo:"—",note:"Maintain quality"},
+    ],
+    w4:[
+      {name:"Barbell Bench Press",sets:2,reps:"5",tempo:"3-1-1-0",note:"Deload: same weight, 2 sets only"},
+      {name:"Incline DB Press",sets:2,reps:"8",tempo:"3-0-1-0",note:"Reduced volume — perfect form"},
+      {name:"DB Arnold Press (seated)",sets:2,reps:"10",tempo:"2-1-1-0",note:"Light and controlled"},
+      {name:"Single-Arm DB Row (braced)",sets:2,reps:"8/side",tempo:"2-1-1-0",note:"Feel the movement pattern"},
+      {name:"Dead Bug",sets:2,reps:"8/side",tempo:"3-1-1-0",note:"McGill work every week"},
+      {name:"Side Plank",sets:2,reps:"30s/side",tempo:"—",note:"Active recovery"},
+    ],
+  }},
+  {label:"TUE",title:"Cardio — Zone 2",theme:"#00B4D8",focus:"Aerobic Base / Steady State",
+   warmup:"5 min easy walk",cooldown:"Calf stretch, supine knee-to-chest, box breathing 3 min",
+   exercises:{
+    w1:[{name:"Run or Brisk Walk",sets:1,reps:"48 min",tempo:"—",note:"HR below (180 − your age). Conversational pace"},{name:"Easy Walk (cooldown)",sets:1,reps:"7 min",tempo:"—",note:"Slow gradually"}],
+    w2:[{name:"Run or Brisk Walk",sets:1,reps:"48 min",tempo:"—",note:"Zone 2 — focus on form as fatigue builds"},{name:"Easy Walk (cooldown)",sets:1,reps:"7 min",tempo:"—",note:"Slow gradually"}],
+    w3:[{name:"Run or Brisk Walk",sets:1,reps:"48 min",tempo:"—",note:"Active recovery — don't push pace"},{name:"Easy Walk (cooldown)",sets:1,reps:"7 min",tempo:"—",note:"Slow gradually"}],
+    w4:[{name:"Brisk Walk (deload)",sets:1,reps:"40 min",tempo:"—",note:"Walk only. Spine recovery priority"},{name:"Easy Walk (cooldown)",sets:1,reps:"5 min",tempo:"—",note:"Transition to stretching"}],
+  }},
+  {label:"WED",title:"Pull + Hinge",theme:"#3F7FE8",focus:"Vertical Pull / Hip Hinge — Spine Braced",
+   warmup:"McGill Big 3: Cat-cow → Bird Dog → Modified Curl-up — then hip circles, thoracic extension on mat",
+   cooldown:"Pigeon pose, lat stretch on bar, child's pose — 8 min. End with 60s dead hang.",
+   exercises:{
+    w1:[
+      {name:"Barbell Deadlift",sets:4,reps:"5",tempo:"3-1-1-0",note:"Valsalva: 360° brace, drive floor away. Hinge — don't squat"},
+      {name:"Pull-ups",sets:4,reps:"5–6",tempo:"2-1-1-2",note:"Weighted if possible. 2s hang at bottom every rep"},
+      {name:"Single-Leg RDL (DB)",sets:3,reps:"8/leg",tempo:"3-1-1-0",note:"Heavy DB. Exposes L/R asymmetry"},
+      {name:"Chest-Supported DB Row",sets:4,reps:"8",tempo:"2-1-2-0",note:"Prone on incline bench. Spine removed"},
+      {name:"DB Rear Delt Row (seated)",sets:3,reps:"12",tempo:"2-0-1-1",note:"Seated, hinge forward. Upper-cross prehab"},
+      {name:"Chin Tuck (cervical retraction)",sets:3,reps:"15",tempo:"1-2-1-0",note:"Counters forward head posture"},
+      {name:"Farmers Carry (DB)",sets:4,reps:"30m",tempo:"—",note:"Heaviest DBs. Tall spine, 360° brace"},
+    ],
+    w2:[
+      {name:"Barbell Deadlift",sets:4,reps:"8",tempo:"3-1-1-0",note:"Moderate. Don't rush the setup"},
+      {name:"Pull-ups",sets:4,reps:"10–12",tempo:"2-1-1-2",note:"Bodyweight. Full range, squeeze at top"},
+      {name:"Single-Leg RDL (DB)",sets:3,reps:"12/leg",tempo:"3-1-1-0",note:"Moderate DB. Feel the hamstring load"},
+      {name:"Chest-Supported DB Row",sets:4,reps:"12",tempo:"2-1-2-0",note:"1s squeeze at top every rep"},
+      {name:"DB Rear Delt Row (seated)",sets:3,reps:"15",tempo:"2-0-1-1",note:"Higher reps — rear delt endurance"},
+      {name:"Chin Tuck (cervical retraction)",sets:3,reps:"15",tempo:"1-2-1-0",note:"Prehab. Every week"},
+      {name:"Farmers Carry (DB)",sets:4,reps:"30m",tempo:"—",note:"Focus on posture over weight"},
+    ],
+    w3:[
+      {name:"Barbell Deadlift",sets:5,reps:"4",tempo:"3-0-X-0",note:"Valsalva then max speed pull"},
+      {name:"Pull-ups",sets:4,reps:"5",tempo:"1-0-X-2",note:"Explode up, 2s lower. DB between feet"},
+      {name:"Single-Leg RDL (DB)",sets:3,reps:"6/leg",tempo:"3-0-X-0",note:"Fast concentric. Unilateral power"},
+      {name:"Chest-Supported DB Row",sets:4,reps:"8",tempo:"2-0-X-0",note:"Pull fast — row with intent"},
+      {name:"DB Rear Delt Row (seated)",sets:3,reps:"12",tempo:"2-0-X-1",note:"Fast pull, slow return"},
+      {name:"Chin Tuck (cervical retraction)",sets:3,reps:"15",tempo:"1-2-1-0",note:"Consistent every week"},
+      {name:"Farmers Carry (DB)",sets:4,reps:"30m",tempo:"—",note:"Heavy DBs. Power week"},
+    ],
+    w4:[
+      {name:"Barbell Deadlift",sets:2,reps:"4",tempo:"3-1-1-0",note:"Deload: same load, 2 sets. Perfect form"},
+      {name:"Pull-ups",sets:2,reps:"6",tempo:"2-1-1-2",note:"Bodyweight. Focus on the hang"},
+      {name:"Single-Leg RDL (DB)",sets:2,reps:"8/leg",tempo:"3-1-1-0",note:"Light DB. Rehab-grade quality"},
+      {name:"Chest-Supported DB Row",sets:2,reps:"10",tempo:"2-1-2-0",note:"Light and deliberate"},
+      {name:"Chin Tuck (cervical retraction)",sets:3,reps:"15",tempo:"1-2-1-0",note:"Non-negotiable in deload"},
+      {name:"Farmers Carry (DB)",sets:3,reps:"20m",tempo:"—",note:"Light DBs. Active recovery"},
+    ],
+  }},
+  {label:"THU",title:"Legs + Carry",theme:"#3EAD6B",focus:"Squat Pattern / Loaded Locomotion",
+   warmup:"McGill Big 3: Cat-cow → Bird Dog → Modified Curl-up — then leg swings, goblet squat holds, ankle circles",
+   cooldown:"Couch stretch, adductor rock, supine twist on mat — 8 min. End with 60s dead hang.",
+   exercises:{
+    w1:[
+      {name:"Goblet Squat (heavy DB)",sets:4,reps:"6",tempo:"3-1-1-0",note:"Valsalva on descent. Heaviest DB you can control"},
+      {name:"DB Bulgarian Split Squat",sets:3,reps:"6/leg",tempo:"3-1-1-0",note:"Rear foot flat bench. Heavy DB"},
+      {name:"Barbell Hip Thrust",sets:4,reps:"8",tempo:"2-1-2-1",note:"Upper back on bench. Valsalva at base"},
+      {name:"DB Step-Up",sets:3,reps:"8/leg",tempo:"2-0-1-0",note:"Step onto flat bench. Drive through heel"},
+      {name:"Nordic Hamstring Curl",sets:3,reps:"5–6",tempo:"4-0-1-0",note:"Anchor feet under barbell. Slow eccentric"},
+      {name:"Suitcase Carry (DB)",sets:3,reps:"30m/side",tempo:"—",note:"Heaviest single DB. Core fights lean"},
+      {name:"Standing Calf Raise (DB)",sets:3,reps:"12",tempo:"2-1-2-1",note:"Heavy DBs. Full range"},
+    ],
+    w2:[
+      {name:"Goblet Squat (heavy DB)",sets:4,reps:"12",tempo:"3-1-1-0",note:"Moderate DB. Pause 1s at bottom"},
+      {name:"DB Bulgarian Split Squat",sets:3,reps:"10/leg",tempo:"3-1-1-0",note:"Feel the stretch"},
+      {name:"Barbell Hip Thrust",sets:4,reps:"12",tempo:"2-1-2-1",note:"1s squeeze at top — glute focus"},
+      {name:"DB Step-Up",sets:3,reps:"12/leg",tempo:"2-0-1-0",note:"Controlled descent"},
+      {name:"Nordic Hamstring Curl",sets:3,reps:"6–8",tempo:"4-0-1-0",note:"Higher reps, same slow eccentric"},
+      {name:"Suitcase Carry (DB)",sets:3,reps:"30m/side",tempo:"—",note:"Steady pace"},
+      {name:"Standing Calf Raise (DB)",sets:3,reps:"20",tempo:"2-1-2-1",note:"Pause at stretch"},
+    ],
+    w3:[
+      {name:"Goblet Squat (explosive)",sets:5,reps:"5",tempo:"3-1-X-0",note:"Valsalva. Drive up explosively"},
+      {name:"DB Bulgarian Split Squat",sets:3,reps:"5/leg",tempo:"3-1-X-0",note:"Explosive drive off front foot"},
+      {name:"Barbell Hip Thrust (explosive)",sets:4,reps:"8",tempo:"2-1-X-1",note:"Drive hips fast — power from glutes"},
+      {name:"DB Step-Up (explosive)",sets:3,reps:"6/leg",tempo:"2-0-X-0",note:"Drive up fast — controlled step down"},
+      {name:"Nordic Hamstring Curl",sets:3,reps:"5",tempo:"4-0-1-0",note:"Eccentric always slow"},
+      {name:"Suitcase Carry (DB)",sets:4,reps:"30m/side",tempo:"—",note:"Heavy single DB. Power week"},
+      {name:"Standing Calf Raise (DB)",sets:3,reps:"10",tempo:"2-1-X-1",note:"Explosive rise. Full range"},
+    ],
+    w4:[
+      {name:"Goblet Squat",sets:2,reps:"8",tempo:"3-1-1-0",note:"Light DB. Movement quality"},
+      {name:"DB Bulgarian Split Squat",sets:2,reps:"8/leg",tempo:"3-1-1-0",note:"Feel balance and pattern"},
+      {name:"Barbell Hip Thrust",sets:2,reps:"10",tempo:"2-1-2-1",note:"Light — spine and glute activation"},
+      {name:"DB Step-Up",sets:2,reps:"8/leg",tempo:"2-0-1-0",note:"Bodyweight or light DBs"},
+      {name:"Suitcase Carry (DB)",sets:2,reps:"20m/side",tempo:"—",note:"Active recovery"},
+      {name:"Standing Calf Raise",sets:2,reps:"15",tempo:"2-1-2-1",note:"Blood flow only"},
+    ],
+  }},
+  {label:"FRI",title:"Push + Rotate",theme:"#E8A83F",focus:"Vertical Push / Rotation from Thorax",
+   warmup:"McGill Big 3: Cat-cow → Bird Dog → Modified Curl-up — then shoulder CARs, thoracic twists, wall slides",
+   cooldown:"Doorway chest stretch, thoracic extension on mat, neck rolls — 8 min. End with 60s dead hang.",
+   exercises:{
+    w1:[
+      {name:"Seated DB Shoulder Press",sets:5,reps:"6",tempo:"3-1-1-0",note:"Seated flat bench. Valsalva on press"},
+      {name:"Incline DB Press",sets:3,reps:"8",tempo:"3-0-1-0",note:"Incline bench. Heavy"},
+      {name:"DB Lateral Raise",sets:3,reps:"10",tempo:"2-0-1-2",note:"2s lower — eccentric builds the shoulder"},
+      {name:"Landmine Press (half-kneeling)",sets:3,reps:"6/side",tempo:"2-1-1-0",note:"Kneel on mat. Heavy single-arm press"},
+      {name:"Half-Kneeling DB Chop",sets:3,reps:"8/side",tempo:"2-0-1-0",note:"Thorax rotates — not lumbar"},
+      {name:"Plank to Down-Dog",sets:3,reps:"8",tempo:"2-1-2-0",note:"Controlled, exhale at top"},
+      {name:"DB Hammer Curl",sets:3,reps:"8",tempo:"2-1-1-0",note:"Heavy neutral grip"},
+    ],
+    w2:[
+      {name:"Seated DB Shoulder Press",sets:4,reps:"12",tempo:"3-0-1-0",note:"Moderate — feel the shoulder work"},
+      {name:"Incline DB Press",sets:3,reps:"12",tempo:"3-0-1-0",note:"Pump — constant tension"},
+      {name:"DB Lateral Raise",sets:3,reps:"15",tempo:"2-0-1-2",note:"Feel the lateral delt"},
+      {name:"Landmine Press (half-kneeling)",sets:3,reps:"10/side",tempo:"2-1-1-0",note:"Moderate — full range"},
+      {name:"Half-Kneeling DB Chop",sets:3,reps:"12/side",tempo:"2-0-1-0",note:"Higher reps — rotational endurance"},
+      {name:"Plank to Down-Dog",sets:3,reps:"12",tempo:"2-1-2-0",note:"More reps, maintain control"},
+      {name:"DB Hammer Curl",sets:3,reps:"12",tempo:"2-1-1-0",note:"Moderate"},
+    ],
+    w3:[
+      {name:"Seated DB Shoulder Press",sets:5,reps:"5",tempo:"3-1-X-0",note:"Valsalva — drive explosively overhead"},
+      {name:"Incline DB Press",sets:3,reps:"6",tempo:"3-0-X-0",note:"Controlled down, explosive press"},
+      {name:"DB Lateral Raise",sets:3,reps:"10",tempo:"2-0-X-2",note:"Fast raise, slow 2s lower"},
+      {name:"Landmine Press (half-kneeling)",sets:4,reps:"5/side",tempo:"2-1-X-0",note:"Max pressing speed"},
+      {name:"Half-Kneeling DB Chop",sets:3,reps:"8/side",tempo:"1-0-X-0",note:"Fast — thorax snaps through"},
+      {name:"Plank to Down-Dog",sets:3,reps:"10",tempo:"2-1-2-0",note:"Core stays tight"},
+      {name:"DB Hammer Curl",sets:3,reps:"6",tempo:"2-1-X-0",note:"Explosive curl"},
+    ],
+    w4:[
+      {name:"Seated DB Shoulder Press",sets:2,reps:"8",tempo:"3-1-1-0",note:"Deload: light, 2 sets"},
+      {name:"Incline DB Press",sets:2,reps:"10",tempo:"3-0-1-0",note:"Movement quality"},
+      {name:"DB Lateral Raise",sets:2,reps:"12",tempo:"2-0-1-2",note:"Blood flow only"},
+      {name:"Landmine Press (half-kneeling)",sets:2,reps:"8/side",tempo:"2-1-1-0",note:"Feel the pattern"},
+      {name:"Plank to Down-Dog",sets:2,reps:"8",tempo:"2-1-2-0",note:"Active recovery"},
+      {name:"DB Hammer Curl",sets:2,reps:"10",tempo:"2-1-1-0",note:"Light"},
+    ],
+  }},
+  {label:"SAT",title:"Full Body Power",theme:"#E83F7A",focus:"Compound Power / Athletic Movement",
+   warmup:"McGill Big 3: Cat-cow → Bird Dog → Modified Curl-up — then ankle hops, hip hinges, jumping jacks",
+   cooldown:"Full body stretch on mat, child's pose — 8 min. End with 60s dead hang.",
+   exercises:{
+    w1:[
+      {name:"DB Hang Power Clean",sets:5,reps:"4",tempo:"3-0-X-0",note:"Valsalva through the pull. Speed + precision"},
+      {name:"Broad Jump",sets:4,reps:"4",tempo:"explosive",note:"Max distance — absorb landing softly"},
+      {name:"Barbell Deadlift (heavy)",sets:4,reps:"4",tempo:"3-0-X-0",note:"Strength emphasis — explosive intent"},
+      {name:"Single-Arm DB Snatch",sets:3,reps:"4/side",tempo:"explosive",note:"Hip drive — lock out overhead"},
+      {name:"Chin-ups (weighted)",sets:3,reps:"5–6",tempo:"1-0-X-2",note:"DB between feet. Explode up, 2s lower"},
+      {name:"DB Thruster",sets:3,reps:"8",tempo:"2-0-X-0",note:"Heavy. Squat into explosive press"},
+      {name:"Sprint Intervals (outdoor or treadmill)",sets:8,reps:"20s on / 40s off",tempo:"—",note:"All-out every rep"},
+    ],
+    w2:[
+      {name:"DB Hang Power Clean",sets:4,reps:"5",tempo:"explosive",note:"Moderate — technique focus"},
+      {name:"Broad Jump",sets:3,reps:"5",tempo:"explosive",note:"Quality over max effort"},
+      {name:"Barbell Deadlift (moderate)",sets:4,reps:"6",tempo:"3-1-1-0",note:"Feel the posterior chain"},
+      {name:"Single-Arm DB Snatch",sets:3,reps:"6/side",tempo:"explosive",note:"Smooth and fast"},
+      {name:"Chin-ups (bodyweight)",sets:3,reps:"8–10",tempo:"2-1-1-2",note:"Full hang, squeeze at top"},
+      {name:"DB Thruster",sets:3,reps:"12",tempo:"2-0-X-0",note:"Conditioning focus"},
+      {name:"Sprint Intervals (outdoor or treadmill)",sets:6,reps:"30s on / 30s off",tempo:"—",note:"Longer intervals"},
+    ],
+    w3:[
+      {name:"DB Hang Power Clean",sets:6,reps:"3",tempo:"explosive",note:"Lighter — absolute max speed"},
+      {name:"Broad Jump",sets:5,reps:"3",tempo:"explosive",note:"Max intent — full recovery between"},
+      {name:"Barbell Deadlift (speed)",sets:5,reps:"3",tempo:"3-0-X-0",note:"60–70% — pull as fast as possible"},
+      {name:"Single-Arm DB Snatch",sets:4,reps:"3/side",tempo:"explosive",note:"Max speed and height"},
+      {name:"Chin-ups (explosive)",sets:4,reps:"4",tempo:"1-0-X-2",note:"DB between feet. Pure power"},
+      {name:"DB Thruster",sets:4,reps:"6",tempo:"2-0-X-0",note:"Peak velocity"},
+      {name:"Sprint Intervals (outdoor or treadmill)",sets:10,reps:"15s on / 45s off",tempo:"—",note:"Short all-out bursts"},
+    ],
+    w4:[
+      {name:"DB Hang Power Clean",sets:3,reps:"3",tempo:"explosive",note:"Deload: light. Move well"},
+      {name:"Broad Jump",sets:3,reps:"3",tempo:"explosive",note:"70% effort — stay fresh"},
+      {name:"Barbell Deadlift",sets:2,reps:"4",tempo:"3-1-1-0",note:"Light. Perfect form"},
+      {name:"Chin-ups (bodyweight)",sets:2,reps:"5",tempo:"2-1-1-2",note:"Hang and decompress"},
+      {name:"DB Thruster",sets:2,reps:"8",tempo:"2-0-X-0",note:"Active recovery"},
+      {name:"Sprint Intervals (outdoor or treadmill)",sets:4,reps:"15s on / 60s off",tempo:"—",note:"Easy jog or walk fast"},
+    ],
+  }},
+  {label:"SUN",title:"Active Recovery",theme:"#9B8AC4",focus:"Mobility / Lumbar Decompression",
+   warmup:"",cooldown:"Diaphragmatic breathing on mat — 5 min. Knees bent.",
+   exercises:{
+    w1:[
+      {name:"Self-Massage (thoracic, glutes, hamstrings)",sets:1,reps:"12 min",tempo:"—",note:"Never directly on lumbar spine"},
+      {name:"90/90 Hip Rotations",sets:2,reps:"10/side",tempo:"—",note:"Hip mobility reduces lumbar load"},
+      {name:"Thoracic Rotations",sets:2,reps:"12/side",tempo:"—",note:"Stack knees side-lying, reach overhead"},
+      {name:"Supine Knee-to-Chest",sets:2,reps:"30s/side",tempo:"—",note:"Gentle lumbar decompression"},
+      {name:"Dead Hang from Pull-up Bar",sets:3,reps:"60s",tempo:"—",note:"Best spinal decompression in the plan"},
+      {name:"Easy Walk (outdoors)",sets:1,reps:"25–35 min",tempo:"—",note:"Walking actively rehabs the lower back"},
+    ],
+    w2:[
+      {name:"Self-Massage (thoracic, glutes, hamstrings)",sets:1,reps:"12 min",tempo:"—",note:"Extra attention to glutes and hamstrings"},
+      {name:"90/90 Hip Rotations",sets:2,reps:"10/side",tempo:"—",note:"Hips tight after heavy leg work"},
+      {name:"Thoracic Rotations",sets:2,reps:"12/side",tempo:"—",note:"Decompress mid-back"},
+      {name:"Supine Knee-to-Chest",sets:2,reps:"30s/side",tempo:"—",note:"Lumbar decompression"},
+      {name:"Dead Hang from Pull-up Bar",sets:3,reps:"60s",tempo:"—",note:"Hang every single day"},
+      {name:"Easy Walk (outdoors)",sets:1,reps:"25–35 min",tempo:"—",note:"Active recovery"},
+    ],
+    w3:[
+      {name:"Self-Massage (full body focus)",sets:1,reps:"15 min",tempo:"—",note:"Power week = more CNS fatigue"},
+      {name:"90/90 Hip Rotations",sets:3,reps:"10/side",tempo:"—",note:"Extra sets after power work"},
+      {name:"Thoracic Rotations",sets:3,reps:"12/side",tempo:"—",note:"Decompress after explosive loading"},
+      {name:"Supine Knee-to-Chest",sets:2,reps:"45s/side",tempo:"—",note:"Longer hold"},
+      {name:"Dead Hang from Pull-up Bar",sets:4,reps:"60s",tempo:"—",note:"Extra set this week"},
+      {name:"Easy Walk (outdoors)",sets:1,reps:"30–40 min",tempo:"—",note:"Power week needs more recovery"},
+    ],
+    w4:[
+      {name:"Self-Massage (full body)",sets:1,reps:"15 min",tempo:"—",note:"Invest in tissue quality"},
+      {name:"90/90 Hip Rotations",sets:3,reps:"12/side",tempo:"—",note:"More mobility volume"},
+      {name:"Thoracic Rotations",sets:3,reps:"15/side",tempo:"—",note:"Thoracic mobility reward week"},
+      {name:"Supine Knee-to-Chest",sets:3,reps:"45s/side",tempo:"—",note:"Decompress properly"},
+      {name:"World's Greatest Stretch",sets:2,reps:"6/side",tempo:"—",note:"Only in deload — CNS is fresh"},
+      {name:"Dead Hang from Pull-up Bar",sets:4,reps:"60s",tempo:"—",note:"Maximum hang — gift to your spine"},
+      {name:"Easy Walk (outdoors)",sets:1,reps:"35–45 min",tempo:"—",note:"Longest walk of the cycle"},
+    ],
+  }},
+];
+
+// ── ONBOARDING OVERLAY ────────────────────────────────────────────────────────
+function Onboarding({onDone}) {
+  const [step,setStep] = useState(0);
+  const steps = [
+    {icon:"💪",title:"World-Class\nFunctional Strength",body:"7 days · 60 min · Intermediate\nLower back sensitivity adapted\nFull voice control"},
+    {icon:"📅",title:"4-Week Cycle",body:"WK 1 Strength → WK 2 Hypertrophy\nWK 3 Power → WK 4 Deload\n\nSame movements, rotating stimulus.\nNo adaptation plateaus."},
+    {icon:"⏱️",title:"Tempo & Valsalva",body:"Every lift has a tempo prescription.\n3-1-1-0 = 3s down, 1s pause, 1s up.\n\nOn big lifts: inhale, brace 360°,\nhold through the rep, exhale at top."},
+    {icon:"🎤",title:"Fully Hands-Free",body:"Tap the mic button once.\n\nThen say:\n• "Start" to begin\n• "Done" after each set\n• "Skip" to cut rest short\n• "What's next" to hear exercises"},
+    {icon:"✅",title:"Tap Done After\nEvery Set",body:"The large Done button at the bottom\nof each exercise starts your rest timer,\nprompts for weight or reps,\nand announces the next exercise."},
+  ];
+  const s = steps[step];
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",animation:"fadeIn 0.3s ease"}}>
+      <div style={{maxWidth:360,width:"100%",animation:"fadeInUp 0.35s ease"}}>
+        <div style={{fontSize:56,textAlign:"center",marginBottom:20}}>{s.icon}</div>
+        <h2 style={{fontSize:22,fontWeight:700,textAlign:"center",marginBottom:16,lineHeight:1.2,whiteSpace:"pre-line"}}>{s.title}</h2>
+        <p style={{fontSize:14,color:"#888",textAlign:"center",lineHeight:1.7,whiteSpace:"pre-line",marginBottom:36}}>{s.body}</p>
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:28}}>
+          {steps.map((_,i)=>(
+            <div key={i} style={{width:i===step?20:6,height:6,borderRadius:3,background:i===step?"#F0EDE8":"#333",transition:"all 0.3s"}}/>
+          ))}
+        </div>
+        <button onClick={()=>step<steps.length-1?setStep(step+1):onDone()} style={{
+          width:"100%",padding:"16px",borderRadius:12,border:"none",
+          background:"#F0EDE8",color:"#0A0A0C",fontSize:15,fontWeight:700,cursor:"pointer",
+          fontFamily:"Georgia,serif",letterSpacing:"0.02em",
+        }}>{step<steps.length-1?"Next →":"Let's Go"}</button>
+        {step>0&&<button onClick={()=>setStep(step-1)} style={{width:"100%",padding:"12px",marginTop:8,borderRadius:12,border:"1px solid #222",background:"transparent",color:"#555",fontSize:13,cursor:"pointer",fontFamily:"Georgia,serif"}}>← Back</button>}
+        {step===0&&<button onClick={onDone} style={{width:"100%",padding:"12px",marginTop:8,borderRadius:12,border:"none",background:"transparent",color:"#444",fontSize:12,cursor:"pointer",fontFamily:"monospace",letterSpacing:"0.08em"}}>skip intro</button>}
+      </div>
+    </div>
+  );
+}
+
+// ── FIXED TIMER BAR ───────────────────────────────────────────────────────────
+function GlobalTimerBar({restRemaining,restTotal,theme,onSkip}) {
+  if(!restTotal||!restRemaining) return null;
+  const pct=(restRemaining/restTotal)*100;
+  return (
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:50,background:"#111",borderBottom:"1px solid #1E1E1E"}}>
+      <div style={{height:3,background:"#1A1A1A"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:theme,transition:"width 1s linear"}}/>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px"}}>
+        <span style={{fontFamily:"monospace",fontSize:11,color:"#777",letterSpacing:"0.08em"}}>REST</span>
+        <span style={{fontFamily:"monospace",fontSize:22,fontWeight:700,color:theme,letterSpacing:"0.05em"}}>{fmtTime(restRemaining)}</span>
+        <button onClick={onSkip} style={{fontFamily:"monospace",fontSize:10,color:"#555",background:"#1A1A1E",border:"1px solid #2A2A2A",borderRadius:5,padding:"4px 10px",cursor:"pointer",letterSpacing:"0.08em"}}>skip</button>
+      </div>
+    </div>
+  );
+}
+
+// ── EXERCISE FOCUS CARD ───────────────────────────────────────────────────────
+function ExerciseFocusCard({ex,exIdx,total,theme,wk,onDone,onPrev,onNext,restRemaining,restTotal,voice,micEnabled,logKey}) {
+  const isBW=BW_EX.has(ex.name), isWBW=WBW_EX.has(ex.name), tracksWeight=!isBW;
+  const [value,setValue] = useState("");
+  const [last,setLast] = useState(null);
+  const [saved,setSaved] = useState(false);
+  const [expanded,setExpanded] = useState(false);
+  const [phase,setPhase] = useState("idle"); // idle|resting|asking|done_all
+  const [curSet,setCurSet] = useState(0);
+  // Use refs for stale-closure-safe access inside callbacks and effects
+  const valRef=useRef(""), phaseRef=useRef("idle"), curSetRef=useRef(0);
+  useEffect(()=>{valRef.current=value;},[value]);
+  useEffect(()=>{phaseRef.current=phase;},[phase]);
+  useEffect(()=>{curSetRef.current=curSet;},[curSet]);
+
+  useEffect(()=>{
+    const d=db.get(logKey);
+    if(d){setLast(d.last||null);setValue(d.current||"");}
+  },[logKey]);
+
+  function saveLog(v){
+    // Prefer explicit arg, then ref (avoids stale closure over value state)
+    const val=(v!==undefined&&v!==null?v:valRef.current||"").trim();
+    if(!val)return;
+    db.set(logKey,{last:val,current:val});
+    setLast(val);setValue(val);valRef.current=val;setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  }
+
+  // Use refs throughout to avoid stale closure bugs
+  function handleDone(){
+    const ph=phaseRef.current, cs=curSetRef.current;
+    if(ph==="asking"||ph==="done_all")return;
+    if(ph==="resting"){onSkipRest();return;}
+    const done=cs+1;
+    if(done>=ex.sets){
+      setPhase("asking"); phaseRef.current="asking";
+      const p=tracksWeight?`All ${ex.sets} sets complete. What weight did you use?`:`All ${ex.sets} sets complete. How did that feel?`;
+      voice.speak(p,()=>{
+        if(micEnabled)voice.listen(t=>{
+          if(t&&t!=="skip")saveLog(t);
+          setPhase("done_all"); phaseRef.current="done_all";
+          onDone(t||valRef.current||"");
+        },()=>{setPhase("done_all"); phaseRef.current="done_all"; onDone(valRef.current||"");});
+        else{setPhase("done_all"); phaseRef.current="done_all"; onDone(valRef.current||"");}
+      });
+    } else {
+      voice.speak(`Set ${done} done. Resting ${fmtSpeak(wk.setBetween)}.`);
+      setCurSet(done); curSetRef.current=done;
+      setPhase("resting"); phaseRef.current="resting";
+    }
+  }
+
+  function onSkipRest(){
+    setPhase("asking"); phaseRef.current="asking";
+    const p=tracksWeight?`Rest skipped. What weight did you use?`:`Rest skipped. How did that feel?`;
+    voice.speak(p,()=>{
+      if(micEnabled)voice.listen(t=>{
+        if(t&&t!=="skip")saveLog(t);
+        setPhase("idle"); phaseRef.current="idle";
+      },()=>{setPhase("idle"); phaseRef.current="idle";});
+      else{setPhase("idle"); phaseRef.current="idle";}
+    });
+  }
+
+  // Ambient mic loop — uses refs for stale-closure-safe command handling
+  const loopAlive=useRef(false);
+  useEffect(()=>{
+    if(!micEnabled||!voice.micOk||phase==="asking"||phase==="done_all")return;
+    let alive=true; loopAlive.current=true;
+    function loop(){
+      if(!alive||!loopAlive.current)return;
+      voice.listen(t=>{
+        if(!alive)return;
+        const ph=phaseRef.current;
+        if(t.includes("done")||t.includes("finish")||t.includes("complete"))handleDone();
+        else if((t.includes("skip")||t.includes("next"))&&ph==="resting")onSkipRest();
+        else if(t.includes("note")||t.includes("save")){
+          // Voice can trigger a save of current input
+          saveLog(); setTimeout(()=>{if(alive&&loopAlive.current)loop();},400);
+        }
+        else setTimeout(()=>{if(alive&&loopAlive.current)loop();},300);
+      },()=>setTimeout(()=>{if(alive&&loopAlive.current)loop();},700));
+    }
+    loop();
+    return()=>{alive=false;loopAlive.current=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[phase,micEnabled,curSet,ex.name]);
+
+  const btnLabel = phase==="resting"?"resting…"
+    :phase==="asking"?"🎤 listening…"
+    :phase==="done_all"?"✓ done"
+    :curSet===0?"▶  DONE  ◀  say done"
+    :`DONE  ·  set ${curSet+1} of ${ex.sets}`;
+  const btnActive = phase==="idle"||phase==="resting";
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",minHeight:"calc(100vh - 200px)",padding:"0 0 140px"}}>
+      {/* Exercise header */}
+      <div style={{padding:"20px 20px 0"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontFamily:"monospace",fontSize:10,color:"#555",letterSpacing:"0.12em"}}>{exIdx+1} OF {total}</span>
+          <a href={vidUrl(ex.name)} target="_blank" rel="noopener noreferrer" style={{
+            fontFamily:"monospace",fontSize:9,color:VM[ex.name]?theme:"#666",
+            background:VM[ex.name]?`${theme}15`:"#1A1A1E",
+            border:`1px solid ${VM[ex.name]?theme+"40":"#2A2A2A"}`,
+            borderRadius:4,padding:"3px 9px",textDecoration:"none",letterSpacing:"0.08em",
+          }}>▶ {VM[ex.name]?`${VM[ex.name].coach}`:"youtube"}</a>
+        </div>
+        <h2 style={{fontSize:26,fontWeight:700,letterSpacing:"-0.02em",lineHeight:1.15,marginBottom:8}}>{ex.name}</h2>
+
+        {/* Sets × Reps prominent display */}
+        <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:14}}>
+          <div style={{background:`${theme}18`,border:`1px solid ${theme}40`,borderRadius:10,padding:"10px 18px",textAlign:"center"}}>
+            <div style={{fontFamily:"monospace",fontSize:28,fontWeight:700,color:theme,lineHeight:1}}>{ex.sets}</div>
+            <div style={{fontFamily:"monospace",fontSize:9,color:theme,opacity:0.7,letterSpacing:"0.1em",marginTop:2}}>SETS</div>
+          </div>
+          <div style={{color:"#333",fontSize:20,fontWeight:300}}>×</div>
+          <div style={{background:"#131315",border:"1px solid #222",borderRadius:10,padding:"10px 18px",textAlign:"center",flex:1}}>
+            <div style={{fontFamily:"monospace",fontSize:22,fontWeight:700,color:"#D0D0E8",lineHeight:1}}>{ex.reps}</div>
+            <div style={{fontFamily:"monospace",fontSize:9,color:"#555",letterSpacing:"0.1em",marginTop:2}}>REPS</div>
+          </div>
+          {ex.tempo!=="—"&&(
+            <div style={{background:"#131315",border:`1px solid ${theme}30`,borderRadius:10,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:theme,lineHeight:1}}>{ex.tempo}</div>
+              <div style={{fontFamily:"monospace",fontSize:9,color:"#555",letterSpacing:"0.1em",marginTop:2}}>TEMPO</div>
+            </div>
+          )}
+        </div>
+
+        {/* Set progress dots */}
+        {ex.sets>1&&(
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {Array.from({length:ex.sets}).map((_,i)=>(
+              <div key={i} style={{height:4,flex:1,borderRadius:2,background:i<curSet?theme:phase==="resting"&&i===curSet?"#E8A83F":"#1E1E1E",transition:"background 0.3s"}}/>
+            ))}
+          </div>
+        )}
+
+        {/* Collapsible note */}
+        <button onClick={()=>setExpanded(!expanded)} style={{
+          width:"100%",background:"#0F0F13",border:"1px solid #1E1E1E",borderRadius:9,
+          padding:"10px 14px",cursor:"pointer",textAlign:"left",
+          display:"flex",alignItems:"center",justifyContent:"space-between",
+          marginBottom:10,
+        }}>
+          <span style={{fontSize:12,color:"#666",fontStyle:"italic",flex:1,lineHeight:1.4,textAlign:"left"}}>{expanded?ex.note:"tap for coaching note"}</span>
+          <span style={{color:"#444",marginLeft:8,fontSize:12,flexShrink:0}}>{expanded?"▲":"▼"}</span>
+        </button>
+
+        {/* Last session log */}
+        {last&&(
+          <div style={{fontFamily:"monospace",fontSize:10,color:"#3A3A5A",marginBottom:10,padding:"8px 12px",background:"#0C0C14",borderRadius:7,border:"1px solid #1A1A2A"}}>
+            last session → <span style={{color:"#5A5A88"}}>{last}</span>
+          </div>
+        )}
+
+        {/* Log input */}
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          <input
+            type={tracksWeight?"number":"text"}
+            placeholder={tracksWeight?"weight (lbs)":"reps / effort note"}
+            value={value}
+            onChange={e=>setValue(e.target.value)}
+            style={{flex:1,background:"#0A0A0E",border:"1px solid #2A2A2A",borderRadius:8,padding:"11px 14px",color:"#D0D0E8",fontFamily:"monospace",fontSize:13,outline:"none"}}
+          />
+          <button onClick={()=>saveLog()} style={{
+            fontFamily:"monospace",fontSize:11,fontWeight:700,
+            color:saved?"#3EAD6B":theme,background:saved?"#3EAD6B18":`${theme}18`,
+            border:`1px solid ${saved?"#3EAD6B40":theme+"40"}`,
+            borderRadius:8,padding:"11px 16px",cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s",
+          }}>{saved?"✓":"save"}</button>
+        </div>
+
+        {/* Listening indicator */}
+        {phase==="asking"&&(
+          <div style={{padding:"10px 14px",background:"#0A0A18",border:"1px solid #2A2A50",borderRadius:8,fontFamily:"monospace",fontSize:11,color:"#6060A0",display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+            <span className="pulse" style={{fontSize:16}}>🎤</span>
+            <span>listening… or type above and tap save</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── FIXED DONE BUTTON at bottom ───────────────────────────────────── */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"16px 20px",paddingBottom:"calc(16px + env(safe-area-inset-bottom))",background:"linear-gradient(transparent,#0A0A0C 30%)",zIndex:40}}>
+        {/* Prev / Next nav */}
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <button onClick={onPrev} disabled={exIdx===0} style={{flex:1,padding:"10px",background:"#111",border:"1px solid #222",borderRadius:10,color:exIdx===0?"#333":"#777",fontFamily:"monospace",fontSize:11,cursor:exIdx===0?"default":"pointer",letterSpacing:"0.06em"}}>← prev</button>
+          <button onClick={onNext} disabled={exIdx===total-1} style={{flex:1,padding:"10px",background:"#111",border:"1px solid #222",borderRadius:10,color:exIdx===total-1?"#333":"#777",fontFamily:"monospace",fontSize:11,cursor:exIdx===total-1?"default":"pointer",letterSpacing:"0.06em"}}>next →</button>
+        </div>
+        <button
+          onClick={handleDone}
+          disabled={phase==="asking"||phase==="done_all"}
+          style={{
+            width:"100%",padding:"20px",borderRadius:16,border:"none",cursor:btnActive?"pointer":"default",
+            background:phase==="done_all"?"#3EAD6B":phase==="resting"?"#E8A83F18":phase==="asking"?"#111":`${theme}`,
+            color:phase==="done_all"?"#0A0A0C":phase==="resting"?"#E8A83F":phase==="asking"?"#555":"#0A0A0C",
+            fontSize:18,fontWeight:700,fontFamily:"monospace",letterSpacing:"0.1em",
+            boxShadow:btnActive&&phase==="idle"?`0 0 30px ${theme}40`:"none",
+            transition:"all 0.2s",
+          }}
+        >{btnLabel}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── WORKOUT SUMMARY ───────────────────────────────────────────────────────────
+function WorkoutSummary({day,wk,logs,duration,onClose}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"#0A0A0C",zIndex:80,overflowY:"auto",animation:"fadeIn 0.3s ease"}}>
+      <div style={{padding:"48px 24px 80px",maxWidth:440,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+          <h2 style={{fontSize:26,fontWeight:700,marginBottom:6}}>Session Complete</h2>
+          <div style={{fontFamily:"monospace",fontSize:12,color:"#555",letterSpacing:"0.1em"}}>{day.title} · {wk.label} {wk.full.toUpperCase()}</div>
+          {duration&&<div style={{fontFamily:"monospace",fontSize:11,color:"#444",marginTop:4}}>{Math.floor(duration/60)} min {duration%60}s</div>}
+        </div>
+
+        <div style={{marginBottom:24}}>
+          <div style={{fontFamily:"monospace",fontSize:10,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Exercises Logged</div>
+          {logs.map((l,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#0F0F13",border:"1px solid #1E1E1E",borderLeft:`3px solid ${day.theme}`,borderRadius:8,marginBottom:6}}>
+              <span style={{fontSize:13,flex:1}}>{l.name}</span>
+              <span style={{fontFamily:"monospace",fontSize:12,color:day.theme,marginLeft:12}}>{l.value||"—"}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Feeling input */}
+        <div style={{marginBottom:24}}>
+          <div style={{fontFamily:"monospace",fontSize:10,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:8}}>Session Notes</div>
+          <textarea placeholder="How did you feel? Anything to note for next time…" style={{
+            width:"100%",minHeight:80,background:"#0A0A0E",border:"1px solid #2A2A2A",borderRadius:10,
+            padding:"12px 14px",color:"#D0D0E8",fontFamily:"Georgia,serif",fontSize:13,outline:"none",resize:"none",
+          }} onChange={e=>db.set(`session-note:${day.label}:${wk.label}`,e.target.value)}/>
+        </div>
+
+        <button onClick={onClose} style={{
+          width:"100%",padding:"18px",borderRadius:14,border:"none",
+          background:day.theme,color:"#0A0A0C",fontSize:16,fontWeight:700,
+          cursor:"pointer",fontFamily:"Georgia,serif",letterSpacing:"0.02em",
+        }}>Back to Plan</button>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function App() {
+  const [showOnboard,setShowOnboard] = useState(()=>!db.get("onboarded"));
+  const [dayIdx,setDayIdx] = useState(0);
+  const [weekIdx,setWeekIdx] = useState(0);
+  const [exIdx,setExIdx] = useState(0);
+  const [view,setView] = useState("home"); // home|workout|summary
+  const [micEnabled,setMicEnabled] = useState(false);
+  const [appStatus,setAppStatus] = useState("tap mic to go hands-free");
+  const [globalRest,setGlobalRest] = useState({remaining:0,total:0});
+  const [sessionLogs,setSessionLogs] = useState([]);
+  const [sessionStart,setSessionStart] = useState(null);
+  const restTickRef = useRef(null);
+  const appLoopAlive = useRef(false);
+  const voice = useVoice();
+
+  const day = DAYS[dayIdx];
+  const wk  = WEEKS[weekIdx];
+  const wKey = useMemo(()=>["w1","w2","w3","w4"][weekIdx],[weekIdx]);
+  const exercises = useMemo(()=>day.exercises[wKey],[day,wKey]);
+
+  // ── rest timer (global) ────────────────────────────────────────────────────
+  function startGlobalRest(secs) {
+    clearInterval(restTickRef.current);
+    setGlobalRest({remaining:secs,total:secs});
+    restTickRef.current = setInterval(()=>{
+      setGlobalRest(r=>{
+        if(r.remaining<=1){clearInterval(restTickRef.current);voice.speak("Rest complete. Ready for next set.");return{remaining:0,total:0};}
+        return{...r,remaining:r.remaining-1};
+      });
+    },1000);
+  }
+  function skipGlobalRest(){clearInterval(restTickRef.current);voice.speak("Rest skipped.");setGlobalRest({remaining:0,total:0});}
+
+  // Use refs for app-loop context so callbacks always see current values
+  const exercisesRef = useRef(exercises);
+  const dayRef = useRef(day);
+  useEffect(()=>{ exercisesRef.current=exercises; dayRef.current=day; },[exercises,day]);
+  const micEnabledRef = useRef(false);
+  useEffect(()=>{ micEnabledRef.current=micEnabled; },[micEnabled]);
+
+  // ── app-level voice loop ────────────────────────────────────────────────────
+  const startAppLoop = useCallback(()=>{
+    if(!voice.micOk||appLoopAlive.current)return;
+    appLoopAlive.current=true;
+    setAppStatus("listening…");
+    voice.listen(t=>{
+      appLoopAlive.current=false;
+      const exs=exercisesRef.current, d=dayRef.current;
+      if(t.includes("start")||t.includes("begin")||t.includes("ready")){
+        const first=exs[0];
+        setAppStatus(`starting ${first.name}`);
+        voice.speak(`Ready. Today is ${d.title}. First up: ${first.name}, ${first.sets} sets of ${first.reps}. Say done after each set.`,()=>{
+          setView("workout"); setExIdx(0);
+          setTimeout(()=>startAppLoop(),400);
+        });
+      } else if(t.includes("next")||t.includes("what")){
+        const ns=exs.map((e,i)=>`${i+1}, ${e.name}`).join(". ");
+        voice.speak(`Today's exercises: ${ns}`,()=>setTimeout(()=>startAppLoop(),400));
+      } else {
+        setTimeout(()=>startAppLoop(),300);
+      }
+    },()=>{ appLoopAlive.current=false; if(micEnabledRef.current)setTimeout(()=>startAppLoop(),700); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[voice]);
+
+  function enableMic(){
+    setMicEnabled(true); micEnabledRef.current=true;
+    voice.speak(`Hands-free active. Today is ${dayRef.current.title}. Say start when ready.`,()=>setTimeout(()=>startAppLoop(),300));
+  }
+  function disableMic(){
+    setMicEnabled(false); micEnabledRef.current=false;
+    appLoopAlive.current=false;
+    voice.stopListening(); voice.stopSpeaking();
+    setAppStatus("mic off");
+  }
+
+  useEffect(()=>{
+    if(micEnabledRef.current){
+      appLoopAlive.current=false; voice.stopListening();
+      voice.speak(`Day changed to ${dayRef.current.title}. Say start when ready.`,()=>setTimeout(()=>startAppLoop(),300));
+    }
+  },[dayIdx]);
+
+  // ── exercise done handler ─────────────────────────────────────────────────
+  function handleExDone(logVal){
+    // Capture current values synchronously before any setState calls
+    const currentIdx=exIdx, currentEx=exercises[exIdx];
+    const totalEx=exercises.length;
+    setSessionLogs(prev=>[...prev,{name:currentEx.name,value:logVal||""}]);
+    if(currentIdx<totalEx-1){
+      startGlobalRest(wk.exBetween);
+      const nextEx=exercises[currentIdx+1];
+      voice.speak(`Exercise done. Next: ${nextEx.name}, ${nextEx.sets} sets of ${nextEx.reps}.`,()=>{});
+      setTimeout(()=>setExIdx(currentIdx+1),400);
+    } else {
+      voice.speak("All exercises complete. Outstanding work.");
+      setView("summary");
+    }
+  }
+
+  function startWorkout(){
+    setSessionLogs([]);setExIdx(0);setSessionStart(Date.now());setView("workout");
+    voice.speak(`Starting ${day.title}. First exercise: ${exercises[0].name}, ${exercises[0].sets} sets of ${exercises[0].reps}. Say done after each set.`);
+  }
+
+  if(showOnboard) return <Onboarding onDone={()=>{db.set("onboarded",true);setShowOnboard(false);}}/>;
+
+  // ── SUMMARY VIEW ──────────────────────────────────────────────────────────
+  if(view==="summary"){
+    // Duration was already computed when session ended — avoid recalculating from potentially-null sessionStart
+    const dur=sessionStart?Math.floor((Date.now()-sessionStart)/1000):null;
+    return <WorkoutSummary day={day} wk={wk} logs={sessionLogs} duration={dur}
+      onClose={()=>{setView("home");setSessionStart(null);setGlobalRest({remaining:0,total:0});clearInterval(restTickRef.current);}}/>;
+  }
+
+  // ── WORKOUT VIEW ──────────────────────────────────────────────────────────
+  if(view==="workout"){
+    const ex=exercises[exIdx];
+    const logKey=`log:${wKey}:${day.label}:${ex.name.replace(/[^a-zA-Z0-9]/g,"-")}`;
+    return (
+      <>
+        <GlobalTimerBar restRemaining={globalRest.remaining} restTotal={globalRest.total} theme={day.theme} onSkip={skipGlobalRest}/>
+        {/* Workout header */}
+        <div style={{
+          background:"#0A0A0C",borderBottom:"1px solid #1E1E1E",
+          paddingTop:`calc(${globalRest.remaining>0?56:12}px + env(safe-area-inset-top))`,
+          paddingRight:"20px",paddingBottom:"12px",paddingLeft:"20px",
+          transition:"padding-top 0.3s",
+        }}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <button onClick={()=>setView("home")} style={{fontFamily:"monospace",fontSize:11,color:"#555",background:"#111",border:"1px solid #222",borderRadius:7,padding:"6px 12px",cursor:"pointer"}}>← back</button>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"monospace",fontSize:10,color:wk.color,letterSpacing:"0.1em"}}>{wk.label} · {wk.full.toUpperCase()}</div>
+              <div style={{fontSize:13,fontWeight:700,color:day.theme}}>{day.title}</div>
+            </div>
+            {voice.micOk?(
+              <button onClick={micEnabled?disableMic:enableMic} style={{fontFamily:"monospace",fontSize:10,color:micEnabled?"#3EAD6B":"#555",background:micEnabled?"#3EAD6B18":"#111",border:`1px solid ${micEnabled?"#3EAD6B40":"#222"}`,borderRadius:7,padding:"6px 10px",cursor:"pointer"}}>
+                {micEnabled?(voice.micActive?"🎤":"🎤 on"):"🎤"}
+              </button>
+            ):<div style={{width:60}}/>}
+          </div>
+        </div>
+        <ExerciseFocusCard
+          ex={ex} exIdx={exIdx} total={exercises.length}
+          theme={day.theme} wk={wk}
+          onDone={handleExDone}
+          onPrev={()=>exIdx>0&&setExIdx(exIdx-1)}
+          onNext={()=>exIdx<exercises.length-1&&setExIdx(exIdx+1)}
+          restRemaining={globalRest.remaining} restTotal={globalRest.total}
+          voice={voice} micEnabled={micEnabled}
+          logKey={logKey}
+        />
+      </>
+    );
+  }
+
+  // ── HOME VIEW ─────────────────────────────────────────────────────────────
+  return (
+    <div style={{minHeight:"100vh",paddingBottom:40}}>
+      {/* Header */}
+      <div style={{padding:`calc(20px + env(safe-area-inset-top)) 20px 20px`,borderBottom:"1px solid #1E1E1E"}}>
+        <div style={{fontFamily:"monospace",fontSize:9,color:"#444",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:6}}>7-Day · 60 min · Intermediate</div>
+        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:16}}>
+          <h1 style={{fontSize:28,fontWeight:700,lineHeight:1.1,letterSpacing:"-0.02em"}}>Functional<br/><span style={{color:day.theme,transition:"color 0.4s"}}>Strength</span></h1>
+          <button onClick={()=>setShowOnboard(true)} style={{fontFamily:"monospace",fontSize:9,color:"#444",background:"transparent",border:"1px solid #222",borderRadius:6,padding:"5px 10px",cursor:"pointer",letterSpacing:"0.08em"}}>? help</button>
+        </div>
+
+        {/* Mic button */}
+        {voice.micOk&&(
+          <button onClick={micEnabled?disableMic:enableMic} style={{
+            display:"flex",alignItems:"center",gap:8,
+            fontFamily:"monospace",fontSize:11,fontWeight:700,letterSpacing:"0.08em",
+            color:micEnabled?"#3EAD6B":"#888",
+            background:micEnabled?"#3EAD6B12":"#111",
+            border:`1px solid ${micEnabled?"#3EAD6B40":"#2A2A2A"}`,
+            borderRadius:8,padding:"10px 16px",cursor:"pointer",marginBottom:16,width:"100%",
+            transition:"all 0.2s",
+          }}>
+            <span className={micEnabled&&voice.micActive?"pulse":""} style={{fontSize:14}}>🎤</span>
+            <span style={{flex:1,textAlign:"left"}}>{micEnabled?(voice.micActive?"listening…":"hands-free on — say start"):"enable hands-free"}</span>
+          </button>
+        )}
+
+        {/* Week selector */}
+        <div style={{background:"#0F0F13",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px"}}>
+          <div style={{fontFamily:"monospace",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:8}}>Periodization Week</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {WEEKS.map((w,i)=>(
+              <button key={i} onClick={()=>setWeekIdx(i)} style={{
+                padding:"7px 10px",borderRadius:7,cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap",
+                border:weekIdx===i?`1.5px solid ${w.color}`:"1.5px solid #222",
+                background:weekIdx===i?`${w.color}20`:"transparent",
+                color:weekIdx===i?w.color:"#555",
+                fontFamily:"monospace",fontSize:10,fontWeight:700,letterSpacing:"0.06em",
+              }}>{w.label}</button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic",paddingTop:8,borderTop:"1px solid #1E1E1E"}}>{wk.desc}</div>
+        </div>
+      </div>
+
+      {/* Day selector — large cards */}
+      <div style={{padding:"16px 20px 0"}}>
+        <div style={{fontFamily:"monospace",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:10}}>Select Day</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {DAYS.map((d,i)=>{
+            const ex=d.exercises[wKey];
+            const isActive=i===dayIdx;
+            return (
+              <button key={i} onClick={()=>setDayIdx(i)} style={{
+                display:"flex",alignItems:"center",padding:"14px 16px",
+                background:isActive?`${d.theme}12`:"#0F0F13",
+                border:`1.5px solid ${isActive?d.theme:"#1E1E1E"}`,
+                borderRadius:12,cursor:"pointer",textAlign:"left",
+                transition:"all 0.2s",
+              }}>
+                <div style={{
+                  width:44,height:44,borderRadius:8,flexShrink:0,marginRight:14,
+                  background:isActive?d.theme:"#1A1A1A",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontFamily:"monospace",fontSize:11,fontWeight:700,
+                  color:isActive?"#0A0A0C":"#555",letterSpacing:"0.06em",
+                  transition:"all 0.2s",
+                }}>{d.label}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:700,color:isActive?d.theme:"#D0D0E8",marginBottom:2,transition:"color 0.2s"}}>{d.title}</div>
+                  <div style={{fontFamily:"monospace",fontSize:10,color:"#555",letterSpacing:"0.04em"}}>{d.focus}</div>
+                </div>
+                <div style={{fontFamily:"monospace",fontSize:10,color:"#333",flexShrink:0,marginLeft:8}}>{ex.length} ex</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Session preview */}
+      <div style={{padding:"20px 20px 0"}}>
+        <div style={{fontFamily:"monospace",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:10}}>Today's Session</div>
+        {day.warmup&&(
+          <div style={{background:"#0F0F13",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px 14px",marginBottom:8,fontSize:12,color:"#777",lineHeight:1.5}}>
+            <span style={{fontFamily:"monospace",fontSize:9,color:"#444",display:"block",marginBottom:3,textTransform:"uppercase",letterSpacing:"0.12em"}}>Warm-up (7 min)</span>
+            {day.warmup}
+          </div>
+        )}
+        <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:16}}>
+          {exercises.map((ex,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",padding:"10px 14px",background:"#0F0F13",border:"1px solid #1E1E1E",borderLeft:`3px solid ${day.theme}`,borderRadius:9}}>
+              <span style={{fontFamily:"monospace",fontSize:10,color:"#444",width:20,flexShrink:0}}>{i+1}</span>
+              <span style={{flex:1,fontSize:13,fontWeight:600}}>{ex.name}</span>
+              <span style={{fontFamily:"monospace",fontSize:11,color:day.theme,flexShrink:0}}>{ex.sets}×{ex.reps}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* START button */}
+        <button onClick={startWorkout} style={{
+          width:"100%",padding:"20px",borderRadius:16,border:"none",
+          background:day.theme,color:"#0A0A0C",
+          fontSize:17,fontWeight:700,cursor:"pointer",
+          fontFamily:"Georgia,serif",letterSpacing:"0.03em",
+          boxShadow:`0 4px 30px ${day.theme}40`,
+          marginBottom:32,
+        }}>Start {day.title} →</button>
+
+        {/* Principles */}
+        <div style={{background:"#0A0A0C",border:"1px solid #151515",borderRadius:12,padding:"16px"}}>
+          <div style={{fontFamily:"monospace",fontSize:9,color:"#333",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:12}}>Program Principles</div>
+          {[
+            ["📅","Undulating Periodization — WK1 Strength → WK2 Hypertrophy → WK3 Power → WK4 Deload."],
+            ["⏱️","Tempo — 3-1-1-0 means 3s down, 1s pause, 1s up. X = explosive."],
+            ["💨","Valsalva — inhale, 360° brace, hold through the rep, exhale at top."],
+            ["⚖️","Unilateral work every session — finds and fixes asymmetries that cause back pain."],
+            ["🔒","Lower Back Rule — sharp or radiating pain means stop. Fatigue ≠ pain."],
+            ["🦴","McGill Big 3 before every strength session. Non-negotiable."],
+            ["🍽️","Carbs 60–90 min pre-workout. 30–40g protein within 60 min post."],
+            ["😴","Sleep 7–9 hrs. Adaptation happens during sleep, not training."],
+            ["🔁","Deload every 3 weeks — spine accumulates fatigue before it signals pain."],
+            ["📈","Log everything. Your log is your coach."],
+          ].map(([icon,text],i)=>(
+            <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:12,color:"#666",lineHeight:1.6,marginBottom:8}}>
+              <span style={{fontSize:14,flexShrink:0}}>{icon}</span><span>{text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
